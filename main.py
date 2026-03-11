@@ -165,6 +165,15 @@ def _outlined_container():
         return st.container()
 
 
+def _format_summary_value(value: Any) -> str:
+    """Format parameter values for compact, readable table cells."""
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_format_summary_value(v) for v in value)
+    return str(value)
+
+
 # ──────────────────────────── Helper: generate a sample image ────────
 def _make_sample_image() -> np.ndarray:
     """Generate a colourful sample image so the app works without uploading."""
@@ -404,10 +413,40 @@ if selected:
                     st.image(out_img, width="stretch")
 
     st.subheader("Pipeline Summary")
-    summary_cols = st.columns(min(len(selected), 4))
-    for i, (name, config) in enumerate(selected.items()):
-        with summary_cols[i % len(summary_cols)]:
-            st.metric(label=name, value=f"p={config['p']:.2f}")
+
+    overview_rows: List[dict[str, Any]] = []
+    param_rows: List[dict[str, str]] = []
+    for name, config in selected.items():
+        params = config["params"]
+        overview_rows.append(
+            {
+                "Augmentation": name,
+                "Probability (p)": f"{config['p']:.2f}",
+                "Parameter count": len(params),
+            }
+        )
+        if params:
+            for pname, pvalue in params.items():
+                param_rows.append(
+                    {
+                        "Augmentation": name,
+                        "Parameter": pname,
+                        "Value": _format_summary_value(pvalue),
+                    }
+                )
+        else:
+            param_rows.append(
+                {
+                    "Augmentation": name,
+                    "Parameter": "(none)",
+                    "Value": "-",
+                }
+            )
+
+    st.caption("Selected augmentations")
+    st.dataframe(overview_rows, hide_index=True, width="stretch")
+    st.caption("All parameters")
+    st.dataframe(param_rows, hide_index=True, width="stretch")
 else:
     st.info("👈 Select augmentations from the sidebar to get started!")
 
