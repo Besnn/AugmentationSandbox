@@ -3,10 +3,13 @@ Registry of Albumentations augmentations with parameter metadata for the UI.
 Compatible with albumentations >= 1.3, < 2.0
 """
 
+import ast
+import inspect
+
 import albumentations as A
 
 # Each entry: (param_name, type, default, min, max, step)
-# type is one of: "int", "float", "bool", "select"
+# type is one of: "int", "float", "bool", "select", "text", "literal"
 # For "select": (param_name, "select", default, [options])
 
 AUGMENTATION_REGISTRY = {
@@ -277,6 +280,146 @@ AUGMENTATION_REGISTRY = {
 }
 
 
+def _has_default_constructor(cls: type) -> bool:
+    """Return True when the transform can be instantiated without required custom args."""
+    signature = inspect.signature(cls.__init__)
+    for param in signature.parameters.values():
+        if param.name in {"self", "always_apply", "p"}:
+            continue
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        if param.default is inspect.Parameter.empty:
+            return False
+    return True
+
+
+def _infer_numeric_bounds(default_value: float) -> tuple[float, float, float]:
+    """Generate simple slider bounds for inferred numeric defaults."""
+    magnitude = max(1.0, abs(float(default_value)))
+    if default_value >= 0:
+        min_v = 0.0
+        max_v = max(1.0, magnitude * 3.0)
+    else:
+        min_v = -magnitude * 3.0
+        max_v = magnitude * 3.0
+    step = 0.01 if abs(default_value) < 1 else 0.1
+    return min_v, max_v, step
+
+
+def _infer_param_definition(param_name: str, default_value: object):
+    """Infer a UI control definition from a constructor default value."""
+    if isinstance(default_value, bool):
+        return (param_name, "bool", default_value)
+    if isinstance(default_value, int):
+        max_v = max(10, abs(default_value) * 3)
+        min_v = 0 if default_value >= 0 else -max_v
+        return (param_name, "int", default_value, min_v, max_v, 1)
+    if isinstance(default_value, float):
+        min_v, max_v, step = _infer_numeric_bounds(default_value)
+        return (param_name, "float", default_value, min_v, max_v, step)
+    if isinstance(default_value, str):
+        return (param_name, "text", default_value)
+    if isinstance(default_value, (tuple, list, dict)) or default_value is None:
+        return (param_name, "literal", repr(default_value))
+    return None
+
+
+def _auto_params_for_class(cls: type) -> list[tuple]:
+    """Build UI params from class signature defaults for optional transforms."""
+    params: list[tuple] = []
+    signature = inspect.signature(cls.__init__)
+    for param in signature.parameters.values():
+        if param.name in {"self", "always_apply", "p"}:
+            continue
+        if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+            continue
+        if param.default is inspect.Parameter.empty:
+            continue
+        inferred = _infer_param_definition(param.name, param.default)
+        if inferred is not None:
+            params.append(inferred)
+    return params
+
+
+def _register_optional_augmentation(
+    name: str,
+    category: str,
+    candidate_class_names: list[str],
+) -> None:
+    """Register optional transforms only when present and safely constructible."""
+    if name in AUGMENTATION_REGISTRY:
+        return
+
+    cls = None
+    for class_name in candidate_class_names:
+        cls = getattr(A, class_name, None)
+        if cls is not None:
+            break
+
+    if cls is None or not _has_default_constructor(cls):
+        return
+
+    AUGMENTATION_REGISTRY[name] = {
+        "class": cls,
+        "category": category,
+        "params": _auto_params_for_class(cls),
+    }
+
+
+# Add requested transforms when available in the installed Albumentations version.
+_OPTIONAL_REQUESTED_AUGMENTATIONS: list[tuple[str, str, list[str]]] = [
+    ("AdditiveNoise", "Blur & Noise", ["AdditiveNoise"]),
+    ("AdvancedBlur", "Blur & Noise", ["AdvancedBlur"]),
+    ("AtmosphericFog", "Weather & Effects", ["AtmosphericFog", "RandomFog"]),
+    ("AutoContrast", "Color", ["AutoContrast"]),
+    ("Blur", "Blur & Noise", ["Blur"]),
+    ("ChannelDropout", "Dropout", ["ChannelDropout"]),
+    ("ChannelSwap", "Color", ["ChannelSwap", "ChannelShuffle"]),
+    ("ChromaticAberration", "Color", ["ChromaticAberration"]),
+    ("Defocus", "Blur & Noise", ["Defocus"]),
+    ("Dithering", "Color", ["Dithering"]),
+    ("Downscale", "Color", ["Downscale"]),
+    ("FDA", "Color", ["FDA"]),
+    ("FancyPCA", "Color", ["FancyPCA"]),
+    ("FilmGrain", "Color", ["FilmGrain"]),
+    ("FromFloat", "Color", ["FromFloat"]),
+    ("GlassBlur", "Blur & Noise", ["GlassBlur"]),
+    ("HEStain", "Color", ["HEStain"]),
+    ("Halftone", "Color", ["Halftone"]),
+    ("HistogramMatching", "Color", ["HistogramMatching"]),
+    ("Illumination", "Color", ["Illumination"]),
+    ("ImageCompression", "Color", ["ImageCompression"]),
+    ("InvertImg", "Color", ["InvertImg"]),
+    ("LensFlare", "Weather & Effects", ["LensFlare", "RandomSunFlare"]),
+    ("Normalize", "Color", ["Normalize"]),
+    ("PhotoMetricDistort", "Color", ["PhotoMetricDistort"]),
+    ("PixelDistributionAdaptation", "Color", ["PixelDistributionAdaptation"]),
+    ("PlanckianJitter", "Color", ["PlanckianJitter"]),
+    ("PlasmaBrightnessContrast", "Color", ["PlasmaBrightnessContrast"]),
+    ("PlasmaShadow", "Weather & Effects", ["PlasmaShadow"]),
+    ("Posterize", "Color", ["Posterize"]),
+    ("RandomFog", "Weather & Effects", ["RandomFog"]),
+    ("RandomGravel", "Weather & Effects", ["RandomGravel"]),
+    ("RandomRain", "Weather & Effects", ["RandomRain"]),
+    ("RandomShadow", "Weather & Effects", ["RandomShadow"]),
+    ("RandomSnow", "Weather & Effects", ["RandomSnow"]),
+    ("RandomSunFlare", "Weather & Effects", ["RandomSunFlare"]),
+    ("RandomToneCurve", "Color", ["RandomToneCurve"]),
+    ("RingingOvershoot", "Enhancement", ["RingingOvershoot"]),
+    ("SaltAndPepper", "Blur & Noise", ["SaltAndPepper"]),
+    ("ShotNoise", "Blur & Noise", ["ShotNoise"]),
+    ("Spatter", "Weather & Effects", ["Spatter"]),
+    ("Superpixels", "Enhancement", ["Superpixels"]),
+    ("ToFloat", "Color", ["ToFloat"]),
+    ("ToRGB", "Color", ["ToRGB"]),
+    ("Vignetting", "Color", ["Vignetting", "RandomVignetting"]),
+    ("ZoomBlur", "Blur & Noise", ["ZoomBlur"]),
+]
+
+for _name, _category, _class_candidates in _OPTIONAL_REQUESTED_AUGMENTATIONS:
+    _register_optional_augmentation(_name, _category, _class_candidates)
+
+
 def _build_kwargs(name: str, param_values: dict) -> dict:
     """
     Convert flat UI param values into the kwargs expected by the albumentations class.
@@ -371,7 +514,15 @@ def _build_kwargs(name: str, param_values: dict) -> dict:
         for p in entry["params"]:
             pname = p[0]
             if pname in param_values:
-                kwargs[pname] = param_values[pname]
+                ptype = p[1]
+                pvalue = param_values[pname]
+                if ptype == "literal" and isinstance(pvalue, str):
+                    try:
+                        kwargs[pname] = ast.literal_eval(pvalue)
+                    except (ValueError, SyntaxError):
+                        kwargs[pname] = pvalue
+                else:
+                    kwargs[pname] = pvalue
 
     return kwargs
 

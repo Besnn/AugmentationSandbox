@@ -2,7 +2,7 @@
 Generates a copy-pasteable Python code snippet from the current augmentation config.
 """
 
-from augmentations import _build_kwargs
+from augmentations import AUGMENTATION_REGISTRY, _build_kwargs
 
 
 def generate_code(selected: dict) -> str:
@@ -18,11 +18,13 @@ def generate_code(selected: dict) -> str:
     ]
 
     for name, config in selected.items():
+        entry = AUGMENTATION_REGISTRY[name]
         kwargs = _build_kwargs(name, config.get("params", {}))
         kwargs["p"] = config.get("p", 1.0)
+        class_name = entry["class"].__name__
 
         kwargs_str = ", ".join(f"{k}={_format_value(v)}" for k, v in kwargs.items())
-        lines.append(f"    A.{name}({kwargs_str}),")
+        lines.append(f"    A.{class_name}({kwargs_str}),")
 
     lines.append("])")
     lines.append("")

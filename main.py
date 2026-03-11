@@ -291,6 +291,12 @@ for cat, aug_names in categories.items():
                             index=options.index(pdefault) if pdefault in options else 0,
                             key=f"param_{aug_name}_{pname}",
                         )
+                    elif ptype in {"text", "literal"}:
+                        val = st.text_input(
+                            label,
+                            value=str(pdefault),
+                            key=f"param_{aug_name}_{pname}",
+                        )
                     else:
                         val = pdefault
                     params[pname] = val
