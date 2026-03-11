@@ -81,9 +81,13 @@ if "last_generated_code" not in st.session_state:
 if "custom_run_iterations" not in st.session_state:
     st.session_state.custom_run_iterations = 1
 
+if "selected_custom_output" not in st.session_state:
+    st.session_state.selected_custom_output = "Pipeline"
+
 
 def _bump_counter():
     st.session_state.run_counter += 1
+    st.session_state.selected_custom_output = "Pipeline"
 
 
 def _run_custom_code(
@@ -305,6 +309,19 @@ else:
     augmented = image.copy()
     error_msg = None
 
+# Resolve which image should appear in the Augmented pane.
+selected_label = st.session_state.selected_custom_output
+selected_custom_img = None
+selected_custom_err = None
+if selected_label != "Pipeline" and st.session_state.custom_run_results:
+    try:
+        run_index = int(str(selected_label).split(" ")[1]) - 1
+        if 0 <= run_index < len(st.session_state.custom_run_results):
+            selected_custom_img, selected_custom_err = st.session_state.custom_run_results[run_index]
+    except (ValueError, IndexError):
+        selected_custom_img = None
+        selected_custom_err = "Invalid custom output selection."
+
 # Display images side by side
 col_orig, col_aug = st.columns(2)
 
@@ -319,10 +336,41 @@ with col_aug:
     if error_msg:
         st.error(f"Error applying augmentation: {error_msg}")
         st.image(image, width="stretch")
+    elif selected_custom_err:
+        st.error(f"Selected custom output error: {selected_custom_err}")
+        st.image(augmented, width="stretch")
+    elif selected_custom_img is not None:
+        st.image(selected_custom_img, width="stretch")
+        h2, w2 = selected_custom_img.shape[:2]
+        st.caption(f"Size: {w2} × {h2}")
     else:
         st.image(augmented, width="stretch")
         h2, w2 = augmented.shape[:2]
         st.caption(f"Size: {w2} × {h2}")
+
+if st.session_state.custom_run_results:
+    st.subheader("Custom Outputs")
+    output_options = ["Pipeline"] + [
+        f"Run {i}" for i in range(1, len(st.session_state.custom_run_results) + 1)
+    ]
+    if st.session_state.selected_custom_output not in output_options:
+        st.session_state.selected_custom_output = "Pipeline"
+    if st.button("Show pipeline output", key="select_pipeline_output", width="content"):
+        st.session_state.selected_custom_output = "Pipeline"
+        st.rerun()
+    output_cols = st.columns(4)
+    for idx, (out_img, out_err) in enumerate(st.session_state.custom_run_results, start=1):
+        with output_cols[(idx - 1) % len(output_cols)]:
+            run_label = f"Run {idx}"
+            is_selected = st.session_state.selected_custom_output == run_label
+            button_text = f"Selected: {run_label}" if is_selected else f"Show {run_label}"
+            if st.button(button_text, key=f"select_custom_run_{idx}", width="stretch"):
+                st.session_state.selected_custom_output = run_label
+                st.rerun()
+            if out_err:
+                st.error(out_err)
+            elif out_img is not None:
+                st.image(out_img, width="stretch")
 
 # Pipeline info
 st.divider()
@@ -340,10 +388,6 @@ if selected:
 
     editor_col, actions_col = st.columns([4, 1])
     with actions_col:
-        if st.button("Load generated", key="load_generated_code"):
-            st.session_state.custom_code = generated_code
-            st.session_state.last_generated_code = generated_code
-            st.session_state.custom_editor_version += 1
         run_button_col, run_count_col = st.columns([2, 1])
         with run_button_col:
             run_custom = st.button("Run code", key="run_custom_code", width="stretch")
@@ -360,6 +404,8 @@ if selected:
             st.session_state.custom_run_results = []
             st.session_state.custom_augmented = None
             st.session_state.custom_error = None
+            st.session_state.selected_custom_output = "Pipeline"
+            st.rerun()
 
     with editor_col:
         editor_shell = _outlined_container()
@@ -393,24 +439,19 @@ if selected:
             iterations=int(st.session_state.custom_run_iterations),
         )
         st.session_state.custom_run_results = run_results
+        successful_indexes = [
+            idx for idx, (img, err) in enumerate(run_results, start=1) if img is not None and err is None
+        ]
+        st.session_state.selected_custom_output = (
+            f"Run {successful_indexes[0]}" if successful_indexes else "Pipeline"
+        )
         # Keep legacy state keys populated for compatibility with any pending UI reads.
         successful = [img for img, err in run_results if img is not None and err is None]
         errors = [err for _, err in run_results if err]
         st.session_state.custom_augmented = successful[-1] if successful else None
         st.session_state.custom_error = "\n".join(errors) if errors else None
+        st.rerun()
 
-    if st.session_state.custom_run_results:
-        st.caption(
-            f"Custom code outputs ({len(st.session_state.custom_run_results)} run(s), each from base image)"
-        )
-        output_cols = st.columns(4)
-        for idx, (out_img, out_err) in enumerate(st.session_state.custom_run_results, start=1):
-            with output_cols[(idx - 1) % len(output_cols)]:
-                st.caption(f"Run {idx}")
-                if out_err:
-                    st.error(out_err)
-                elif out_img is not None:
-                    st.image(out_img, width="stretch")
 
     st.subheader("Pipeline Summary")
 
