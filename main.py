@@ -10,7 +10,7 @@ import streamlit as st
 from PIL import Image
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, List, Optional, Tuple, cast
 
 from augmentations import AUGMENTATION_REGISTRY, build_pipeline
 from code_generator import generate_code
@@ -69,18 +69,26 @@ if "custom_augmented" not in st.session_state:
 if "custom_error" not in st.session_state:
     st.session_state.custom_error = None
 
+if "custom_run_results" not in st.session_state:
+    st.session_state.custom_run_results = []
+
 if "custom_editor_version" not in st.session_state:
     st.session_state.custom_editor_version = 0
 
 if "last_generated_code" not in st.session_state:
     st.session_state.last_generated_code = ""
 
+if "custom_run_iterations" not in st.session_state:
+    st.session_state.custom_run_iterations = 1
+
 
 def _bump_counter():
     st.session_state.run_counter += 1
 
 
-def _run_custom_code(code: str, image: np.ndarray) -> tuple[np.ndarray | None, str | None]:
+def _run_custom_code(
+    code: str, image: np.ndarray, iterations: int = 1
+) -> List[Tuple[Optional[np.ndarray], Optional[str]]]:
     """Execute custom code and return either an image or an error message."""
     safe_builtins = {
         "abs": builtins.abs,
@@ -104,29 +112,41 @@ def _run_custom_code(code: str, image: np.ndarray) -> tuple[np.ndarray | None, s
         "__import__": builtins.__import__,
     }
     global_scope: dict[str, Any] = {"__builtins__": safe_builtins, "A": A, "np": np}
-    local_scope: dict[str, Any] = {"image": image.copy()}
 
-    try:
-        exec(code, global_scope, local_scope)
-        if "augmented_image" in local_scope:
-            output = local_scope["augmented_image"]
-        elif "result" in local_scope and isinstance(local_scope["result"], dict):
-            result_obj = local_scope["result"]
-            output = result_obj.get("image")
-        elif callable(local_scope.get("apply")):
-            apply_fn = local_scope["apply"]
-            output = apply_fn(image.copy())
-        elif callable(local_scope.get("transform")):
-            transform_fn = local_scope["transform"]
-            output = transform_fn(image=image)["image"]
-        else:
-            return None, "Define transform, augmented_image, result['image'], or apply(image)."
+    def _execute_once(current_image: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[str]]:
+        local_scope: dict[str, Any] = {"image": current_image.copy()}
 
-        if not isinstance(output, np.ndarray):
-            return None, "Custom code output must be a numpy.ndarray image."
-        return output, None
-    except Exception as exc:
-        return None, str(exc)
+        try:
+            exec(code, global_scope, local_scope)
+            if "augmented_image" in local_scope:
+                output = local_scope["augmented_image"]
+            elif "result" in local_scope and isinstance(local_scope["result"], dict):
+                result_obj = local_scope["result"]
+                output = result_obj.get("image")
+            elif callable(local_scope.get("apply")):
+                apply_fn = local_scope["apply"]
+                output = apply_fn(current_image.copy())
+            elif callable(local_scope.get("transform")):
+                transform_fn = local_scope["transform"]
+                output = transform_fn(image=current_image)["image"]
+            else:
+                return None, "Define transform, augmented_image, result['image'], or apply(image)."
+
+            if not isinstance(output, np.ndarray):
+                return None, "Custom code output must be a numpy.ndarray image."
+            return output, None
+        except Exception as exc:
+            return None, str(exc)
+
+    run_results: List[Tuple[Optional[np.ndarray], Optional[str]]] = []
+    for _ in range(max(1, iterations)):
+        # Run each iteration from the same base image instead of chaining outputs.
+        output, error = _execute_once(image)
+        if output is None and error is None:
+            error = "Custom code returned no image output."
+        run_results.append((output, error))
+
+    return run_results
 
 
 def _get_editor_theme() -> str:
@@ -315,8 +335,20 @@ if selected:
             st.session_state.custom_code = generated_code
             st.session_state.last_generated_code = generated_code
             st.session_state.custom_editor_version += 1
-        run_custom = st.button("Run code", key="run_custom_code")
+        run_button_col, run_count_col = st.columns([2, 1])
+        with run_button_col:
+            run_custom = st.button("Run code", key="run_custom_code", width="stretch")
+        with run_count_col:
+            st.number_input(
+                "Runs",
+                min_value=1,
+                max_value=100,
+                step=1,
+                key="custom_run_iterations",
+                help="Number of independent runs from the same base image.",
+            )
         if st.button("Clear output", key="clear_custom_output"):
+            st.session_state.custom_run_results = []
             st.session_state.custom_augmented = None
             st.session_state.custom_error = None
 
@@ -346,15 +378,30 @@ if selected:
                 st.caption("Tip: install streamlit-ace for syntax-highlighted editing.")
 
     if run_custom:
-        out_img, out_err = _run_custom_code(st.session_state.custom_code, image)
-        st.session_state.custom_augmented = out_img
-        st.session_state.custom_error = out_err
+        run_results = _run_custom_code(
+            st.session_state.custom_code,
+            image,
+            iterations=int(st.session_state.custom_run_iterations),
+        )
+        st.session_state.custom_run_results = run_results
+        # Keep legacy state keys populated for compatibility with any pending UI reads.
+        successful = [img for img, err in run_results if img is not None and err is None]
+        errors = [err for _, err in run_results if err]
+        st.session_state.custom_augmented = successful[-1] if successful else None
+        st.session_state.custom_error = "\n".join(errors) if errors else None
 
-    if st.session_state.custom_error:
-        st.error(f"Custom code error: {st.session_state.custom_error}")
-    elif st.session_state.custom_augmented is not None:
-        st.caption("Custom code output")
-        st.image(st.session_state.custom_augmented, width="stretch")
+    if st.session_state.custom_run_results:
+        st.caption(
+            f"Custom code outputs ({len(st.session_state.custom_run_results)} run(s), each from base image)"
+        )
+        output_cols = st.columns(4)
+        for idx, (out_img, out_err) in enumerate(st.session_state.custom_run_results, start=1):
+            with output_cols[(idx - 1) % len(output_cols)]:
+                st.caption(f"Run {idx}")
+                if out_err:
+                    st.error(out_err)
+                elif out_img is not None:
+                    st.image(out_img, width="stretch")
 
     st.subheader("Pipeline Summary")
     summary_cols = st.columns(min(len(selected), 4))
