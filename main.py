@@ -199,6 +199,18 @@ def _make_sample_image() -> np.ndarray:
 
 
 # ──────────────────────────── Sidebar ────────────────────────────────
+st.sidebar.markdown("### Jump to Section")
+st.sidebar.markdown(
+    "\n".join(
+        [
+            "- [Image Comparison](#image-comparison)",
+            "- [Custom Outputs](#custom-outputs)",
+            "- [Pipeline Code](#pipeline-code)",
+            "- [Pipeline Summary](#pipeline-summary)",
+        ]
+    )
+)
+st.sidebar.divider()
 st.sidebar.title("Augmentation Sandbox")
 st.sidebar.markdown("Upload an image and configure augmentations.")
 
@@ -287,6 +299,7 @@ for cat, aug_names in categories.items():
                 st.markdown("---")
 
 # ──────────────────────────── Main area ──────────────────────────────
+st.markdown('<div id="top"></div>', unsafe_allow_html=True)
 st.title("Albumentations Augmentation Sandbox")
 
 # Re-run button
@@ -323,6 +336,7 @@ if selected_label != "Pipeline" and st.session_state.custom_run_results:
         selected_custom_err = "Invalid custom output selection."
 
 # Display images side by side
+st.markdown('<div id="image-comparison"></div>', unsafe_allow_html=True)
 col_orig, col_aug = st.columns(2)
 
 with col_orig:
@@ -348,6 +362,7 @@ with col_aug:
         h2, w2 = augmented.shape[:2]
         st.caption(f"Size: {w2} × {h2}")
 
+st.markdown('<div id="custom-outputs"></div>', unsafe_allow_html=True)
 if st.session_state.custom_run_results:
     st.subheader("Custom Outputs")
     output_options = ["Pipeline"] + [
@@ -373,6 +388,7 @@ if st.session_state.custom_run_results:
                 st.image(out_img, width="stretch")
 
 # Pipeline info
+st.markdown('<div id="pipeline-code"></div>', unsafe_allow_html=True)
 st.divider()
 
 if selected:
@@ -452,7 +468,7 @@ if selected:
         st.session_state.custom_error = "\n".join(errors) if errors else None
         st.rerun()
 
-
+    st.markdown('<div id="pipeline-summary"></div>', unsafe_allow_html=True)
     st.subheader("Pipeline Summary")
 
     overview_rows: List[dict[str, Any]] = []
