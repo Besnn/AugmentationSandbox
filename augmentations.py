@@ -28,6 +28,20 @@ AUGMENTATION_REGISTRY = {
             ("limit", "int", 45, 0, 180, 1),
         ],
     },
+    "RandomRotate90": {
+        "class": A.RandomRotate90,
+        "category": "Geometric",
+        "params": [],
+    },
+    "ShiftScaleRotate": {
+        "class": A.ShiftScaleRotate,
+        "category": "Geometric",
+        "params": [
+            ("shift_limit", "float", 0.1, 0.0, 0.5, 0.01),
+            ("scale_limit", "float", 0.1, 0.0, 0.5, 0.01),
+            ("rotate_limit", "int", 30, 0, 180, 1),
+        ],
+    },
     "Affine": {
         "class": A.Affine,
         "category": "Geometric",
@@ -134,6 +148,26 @@ AUGMENTATION_REGISTRY = {
         "category": "Color",
         "params": [],
     },
+    "ToSepia": {
+        "class": A.ToSepia,
+        "category": "Color",
+        "params": [],
+    },
+    "Equalize": {
+        "class": A.Equalize,
+        "category": "Color",
+        "params": [
+            ("mode", "select", "cv", ["cv", "pil"]),
+            ("by_channels", "bool", True),
+        ],
+    },
+    "Solarize": {
+        "class": A.Solarize,
+        "category": "Color",
+        "params": [
+            ("threshold", "int", 128, 0, 255, 1),
+        ],
+    },
     # ── Blur / Noise ──
     "GaussianBlur": {
         "class": A.GaussianBlur,
@@ -165,6 +199,26 @@ AUGMENTATION_REGISTRY = {
             ("blur_limit", "int", 7, 3, 31, 2),
         ],
     },
+    "ISONoise": {
+        "class": A.ISONoise,
+        "category": "Blur & Noise",
+        "params": [
+            ("color_shift_min", "float", 0.01, 0.0, 0.5, 0.01),
+            ("color_shift_max", "float", 0.05, 0.0, 1.0, 0.01),
+            ("intensity_min", "float", 0.1, 0.0, 0.5, 0.01),
+            ("intensity_max", "float", 0.5, 0.0, 1.0, 0.01),
+        ],
+    },
+    "MultiplicativeNoise": {
+        "class": A.MultiplicativeNoise,
+        "category": "Blur & Noise",
+        "params": [
+            ("multiplier_min", "float", 0.9, 0.0, 2.0, 0.01),
+            ("multiplier_max", "float", 1.1, 0.0, 3.0, 0.01),
+            ("per_channel", "bool", False),
+            ("elementwise", "bool", False),
+        ],
+    },
     # ── Enhancement ──
     "Sharpen": {
         "class": A.Sharpen,
@@ -186,6 +240,18 @@ AUGMENTATION_REGISTRY = {
             ("strength_max", "float", 0.7, 0.0, 2.0, 0.05),
         ],
     },
+    "UnsharpMask": {
+        "class": A.UnsharpMask,
+        "category": "Enhancement",
+        "params": [
+            ("blur_limit", "int", 7, 3, 31, 2),
+            ("sigma_limit_min", "float", 0.1, 0.0, 2.0, 0.05),
+            ("sigma_limit_max", "float", 1.0, 0.0, 3.0, 0.05),
+            ("alpha_min", "float", 0.2, 0.0, 1.0, 0.05),
+            ("alpha_max", "float", 0.5, 0.0, 1.0, 0.05),
+            ("threshold", "int", 10, 0, 255, 1),
+        ],
+    },
     # ── Dropout ──
     "CoarseDropout": {
         "class": A.CoarseDropout,
@@ -198,6 +264,14 @@ AUGMENTATION_REGISTRY = {
             ("max_height", "int", 32, 1, 256, 1),
             ("min_width", "int", 8, 1, 128, 1),
             ("max_width", "int", 32, 1, 256, 1),
+        ],
+    },
+    "PixelDropout": {
+        "class": A.PixelDropout,
+        "category": "Dropout",
+        "params": [
+            ("dropout_prob", "float", 0.01, 0.0, 1.0, 0.01),
+            ("per_channel", "bool", False),
         ],
     },
 }
@@ -218,17 +292,28 @@ def _build_kwargs(name: str, param_values: dict) -> dict:
         kwargs["scale"] = (param_values.get("scale_min", 0.05), param_values.get("scale_max", 0.1))
     elif name == "Rotate":
         kwargs["limit"] = param_values.get("limit", 45)
+    elif name == "ShiftScaleRotate":
+        kwargs["shift_limit"] = param_values.get("shift_limit", 0.1)
+        kwargs["scale_limit"] = param_values.get("scale_limit", 0.1)
+        kwargs["rotate_limit"] = param_values.get("rotate_limit", 30)
     elif name == "RandomGamma":
-        kwargs["gamma_limit"] = (
-            param_values.get("gamma_limit_low", 80),
-            param_values.get("gamma_limit_high", 120),
-        )
+        gamma_low = param_values.get("gamma_limit_low", 80)
+        gamma_high = param_values.get("gamma_limit_high", 120)
+        kwargs["gamma_limit"] = (min(gamma_low, gamma_high), max(gamma_low, gamma_high))
     elif name == "Sharpen":
-        kwargs["alpha"] = (param_values.get("alpha_min", 0.2), param_values.get("alpha_max", 0.5))
-        kwargs["lightness"] = (param_values.get("lightness_min", 0.5), param_values.get("lightness_max", 1.0))
+        alpha_min = param_values.get("alpha_min", 0.2)
+        alpha_max = param_values.get("alpha_max", 0.5)
+        lightness_min = param_values.get("lightness_min", 0.5)
+        lightness_max = param_values.get("lightness_max", 1.0)
+        kwargs["alpha"] = (min(alpha_min, alpha_max), max(alpha_min, alpha_max))
+        kwargs["lightness"] = (min(lightness_min, lightness_max), max(lightness_min, lightness_max))
     elif name == "Emboss":
-        kwargs["alpha"] = (param_values.get("alpha_min", 0.2), param_values.get("alpha_max", 0.5))
-        kwargs["strength"] = (param_values.get("strength_min", 0.2), param_values.get("strength_max", 0.7))
+        alpha_min = param_values.get("alpha_min", 0.2)
+        alpha_max = param_values.get("alpha_max", 0.5)
+        strength_min = param_values.get("strength_min", 0.2)
+        strength_max = param_values.get("strength_max", 0.7)
+        kwargs["alpha"] = (min(alpha_min, alpha_max), max(alpha_min, alpha_max))
+        kwargs["strength"] = (min(strength_min, strength_max), max(strength_min, strength_max))
     elif name == "GaussianBlur":
         blur_limit = int(param_values.get("blur_limit", 7))
         blur_limit = max(3, blur_limit)
@@ -243,7 +328,35 @@ def _build_kwargs(name: str, param_values: dict) -> dict:
         # so we pass a 0-255 scale tuple directly.
         var_min = round(param_values.get("var_limit_min", 0.001) * 255 * 255)
         var_max = round(param_values.get("var_limit_max", 0.01) * 255 * 255)
-        kwargs["var_limit"] = (max(0, var_min), max(1, var_max))
+        var_min = max(0, var_min)
+        var_max = max(1, var_max)
+        kwargs["var_limit"] = (min(var_min, var_max), max(var_min, var_max))
+    elif name == "ISONoise":
+        color_shift_min = param_values.get("color_shift_min", 0.01)
+        color_shift_max = param_values.get("color_shift_max", 0.05)
+        intensity_min = param_values.get("intensity_min", 0.1)
+        intensity_max = param_values.get("intensity_max", 0.5)
+        kwargs["color_shift"] = (min(color_shift_min, color_shift_max), max(color_shift_min, color_shift_max))
+        kwargs["intensity"] = (min(intensity_min, intensity_max), max(intensity_min, intensity_max))
+    elif name == "MultiplicativeNoise":
+        mult_min = param_values.get("multiplier_min", 0.9)
+        mult_max = param_values.get("multiplier_max", 1.1)
+        kwargs["multiplier"] = (min(mult_min, mult_max), max(mult_min, mult_max))
+        kwargs["per_channel"] = param_values.get("per_channel", False)
+        kwargs["elementwise"] = param_values.get("elementwise", False)
+    elif name == "UnsharpMask":
+        blur_limit = int(param_values.get("blur_limit", 7))
+        blur_limit = max(3, blur_limit)
+        if blur_limit % 2 == 0:
+            blur_limit += 1
+        sigma_min = param_values.get("sigma_limit_min", 0.1)
+        sigma_max = param_values.get("sigma_limit_max", 1.0)
+        alpha_min = param_values.get("alpha_min", 0.2)
+        alpha_max = param_values.get("alpha_max", 0.5)
+        kwargs["blur_limit"] = (3, blur_limit)
+        kwargs["sigma_limit"] = (min(sigma_min, sigma_max), max(sigma_min, sigma_max))
+        kwargs["alpha"] = (min(alpha_min, alpha_max), max(alpha_min, alpha_max))
+        kwargs["threshold"] = param_values.get("threshold", 10)
     elif name == "CoarseDropout":
         # v1.x positional kwargs
         kwargs["max_holes"] = param_values.get("max_holes", 8)
