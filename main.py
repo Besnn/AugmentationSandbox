@@ -9,6 +9,7 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 from collections import OrderedDict
+from pathlib import Path
 from typing import Any, cast
 
 from augmentations import AUGMENTATION_REGISTRY, build_pipeline
@@ -19,6 +20,34 @@ try:
 except ImportError:
     st_ace = None
     ACE_THEMES = []
+
+
+def _load_github_dark_theme_js() -> str:
+    """Load the local GitHub Dark Ace theme file bundled with this app."""
+    theme_asset = Path(__file__).with_name("theme-github_dark.js")
+    return theme_asset.read_text(encoding="utf-8")
+
+
+def _ensure_github_dark_theme() -> None:
+    """Create the ACE GitHub Dark theme file if the installed package is missing it."""
+    if st_ace is None:
+        return
+    try:
+        import streamlit_ace
+
+        theme_path = (
+            Path(streamlit_ace.__file__).resolve().parent
+            / "frontend"
+            / "build"
+            / "theme-github_dark.js"
+        )
+        if not theme_path.exists():
+            theme_path.write_text(_load_github_dark_theme_js(), encoding="utf-8")
+        if "github_dark" not in ACE_THEMES:
+            ACE_THEMES.append("github_dark")
+    except Exception:
+        # Keep the app usable even if site-packages is read-only.
+        pass
 
 # ──────────────────────────── Page config ────────────────────────────
 st.set_page_config(
@@ -102,7 +131,10 @@ def _run_custom_code(code: str, image: np.ndarray) -> tuple[np.ndarray | None, s
 
 def _get_editor_theme() -> str:
     """Use GitHub Dark for the custom code editor."""
-    return "github_dark"
+    _ensure_github_dark_theme()
+    if "github_dark" in ACE_THEMES:
+        return "github_dark"
+    return "monokai"
 
 
 def _outlined_container():
