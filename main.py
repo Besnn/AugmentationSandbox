@@ -648,8 +648,6 @@ editor_col, actions_col = st.columns([4, 1])
 ace_theme = _get_editor_theme()
 
 with actions_col:
-    st.caption("Editor theme follows Streamlit theme")
-
     run_custom = st.button("Run code", key="run_custom_code", width="stretch")
     st.number_input(
         "Runs",
