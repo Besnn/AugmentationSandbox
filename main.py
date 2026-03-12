@@ -180,7 +180,11 @@ def _get_editor_theme() -> str:
     _ensure_custom_ace_theme(preferred_theme)
     if preferred_theme in ACE_THEMES:
         return preferred_theme
-    return "github_dark"
+    for fallback_theme in ["monokai", "github", "tomorrow_night", "textmate"]:
+        if fallback_theme in ACE_THEMES:
+            return fallback_theme
+    # Final fallback avoids requesting non-existent custom assets.
+    return "monokai"
 
 
 def _outlined_container():
