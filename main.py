@@ -22,14 +22,14 @@ except ImportError:
     ACE_THEMES = []
 
 
-def _load_github_dark_theme_js() -> str:
-    """Load the local GitHub Dark Ace theme file bundled with this app."""
-    theme_asset = Path(__file__).with_name("theme-github_dark.js")
+def _load_bundled_ace_theme(theme_name: str) -> str:
+    """Load bundled Ace theme JS file (for example github_dark or github_light)."""
+    theme_asset = Path(__file__).with_name(f"theme-{theme_name}.js")
     return theme_asset.read_text(encoding="utf-8")
 
 
-def _ensure_github_dark_theme() -> None:
-    """Create the ACE GitHub Dark theme file if the installed package is missing it."""
+def _ensure_custom_ace_theme(theme_name: str) -> None:
+    """Create a custom Ace theme file in streamlit-ace package assets when missing."""
     if st_ace is None:
         return
     try:
@@ -39,12 +39,12 @@ def _ensure_github_dark_theme() -> None:
             Path(streamlit_ace.__file__).resolve().parent
             / "frontend"
             / "build"
-            / "theme-github_dark.js"
+            / f"theme-{theme_name}.js"
         )
         if not theme_path.exists():
-            theme_path.write_text(_load_github_dark_theme_js(), encoding="utf-8")
-        if "github_dark" not in ACE_THEMES:
-            ACE_THEMES.append("github_dark")
+            theme_path.write_text(_load_bundled_ace_theme(theme_name), encoding="utf-8")
+        if theme_name not in ACE_THEMES:
+            ACE_THEMES.append(theme_name)
     except Exception:
         # Keep the app usable even if site-packages is read-only.
         pass
@@ -83,6 +83,9 @@ if "custom_run_iterations" not in st.session_state:
 
 if "selected_custom_output" not in st.session_state:
     st.session_state.selected_custom_output = "Pipeline"
+
+if "editor_theme_preference" not in st.session_state:
+    st.session_state.editor_theme_preference = "dark"
 
 
 def _bump_counter():
@@ -154,11 +157,33 @@ def _run_custom_code(
 
 
 def _get_editor_theme() -> str:
-    """Use GitHub Dark for the custom code editor."""
-    _ensure_github_dark_theme()
-    if "github_dark" in ACE_THEMES:
-        return "github_dark"
-    return "monokai"
+    """Use GitHub Dark in dark mode and GitHub Light in light mode."""
+    # Check user's manual preference first
+    preference = st.session_state.get("editor_theme_preference", "dark")
+
+    if preference == "dark":
+        prefer_dark = True
+    elif preference == "light":
+        prefer_dark = False
+    else:  # 'auto'
+        # Default to light theme for 'auto' if detection fails
+        prefer_dark = False
+        try:
+            # st.get_option is the most reliable way for custom themes.
+            if st.get_option("theme.base") == "dark":
+                prefer_dark = True
+        except Exception:
+            # Silently ignore if this fails, stay with default.
+            pass
+
+    preferred_theme = "github_dark" if prefer_dark else "github_light"
+    fallback_theme = "monokai" if prefer_dark else "github"
+
+    _ensure_custom_ace_theme(preferred_theme)
+
+    if preferred_theme in ACE_THEMES:
+        return preferred_theme
+    return fallback_theme
 
 
 def _outlined_container():
@@ -397,86 +422,96 @@ if st.session_state.custom_run_results:
 st.markdown('<div id="pipeline-code"></div>', unsafe_allow_html=True)
 st.divider()
 
-if selected:
-    st.subheader("Pipeline Code")
-    generated_code = generate_code(selected)
-    if (
-        not st.session_state.custom_code
-        or generated_code != st.session_state.last_generated_code
-    ):
-        st.session_state.custom_code = generated_code
-        st.session_state.last_generated_code = generated_code
-        st.session_state.custom_editor_version += 1
+st.subheader("Pipeline Code")
+generated_code = generate_code(selected)
+if (
+    not st.session_state.custom_code
+    or generated_code != st.session_state.last_generated_code
+):
+    st.session_state.custom_code = generated_code
+    st.session_state.last_generated_code = generated_code
+    st.session_state.custom_editor_version += 1
 
-    editor_col, actions_col = st.columns([4, 1])
-    with actions_col:
-        run_button_col, run_count_col = st.columns([2, 1])
-        with run_button_col:
-            run_custom = st.button("Run code", key="run_custom_code", width="stretch")
-        with run_count_col:
-            st.number_input(
-                "Runs",
-                min_value=1,
-                max_value=100,
-                step=1,
-                key="custom_run_iterations",
-                help="Number of independent runs from the same base image.",
-            )
-        if st.button("Clear output", key="clear_custom_output"):
-            st.session_state.custom_run_results = []
-            st.session_state.custom_augmented = None
-            st.session_state.custom_error = None
-            st.session_state.selected_custom_output = "Pipeline"
-            st.rerun()
+editor_col, actions_col = st.columns([4, 1])
+with actions_col:
+    # Theme selector
+    st.selectbox(
+        "Editor theme",
+        options=["dark", "auto", "light"],
+        key="editor_theme_preference",
+        help="Choose editor color theme. Auto follows Streamlit theme.",
+    )
 
-    with editor_col:
-        editor_shell = _outlined_container()
-        with editor_shell:
-            if st_ace is not None:
-                ace_key = f"custom_code_ace_{st.session_state.custom_editor_version}"
-                ace_editor = cast(Any, st_ace)
-                edited_code = ace_editor(
-                    value=st.session_state.custom_code,
-                    language="python",
-                    theme=_get_editor_theme(),
-                    key=ace_key,
-                    height=260,
-                    auto_update=True,
-                )
-                if edited_code is not None:
-                    st.session_state.custom_code = edited_code
-            else:
-                st.text_area(
-                    "Editable pipeline code",
-                    key="custom_code",
-                    height=260,
-                    help="Define transform, augmented_image, result['image'], or apply(image).",
-                )
-                st.caption("Tip: install streamlit-ace for syntax-highlighted editing.")
-
-    if run_custom:
-        run_results = _run_custom_code(
-            st.session_state.custom_code,
-            image,
-            iterations=int(st.session_state.custom_run_iterations),
+    run_button_col, run_count_col = st.columns([2, 1])
+    with run_button_col:
+        run_custom = st.button("Run code", key="run_custom_code", width="stretch")
+    with run_count_col:
+        st.number_input(
+            "Runs",
+            min_value=1,
+            max_value=100,
+            step=1,
+            key="custom_run_iterations",
+            help="Number of independent runs from the same base image.",
         )
-        st.session_state.custom_run_results = run_results
-        successful_indexes = [
-            idx for idx, (img, err) in enumerate(run_results, start=1) if img is not None and err is None
-        ]
-        st.session_state.selected_custom_output = (
-            f"Run {successful_indexes[0]}" if successful_indexes else "Pipeline"
-        )
-        # Keep legacy state keys populated for compatibility with any pending UI reads.
-        successful = [img for img, err in run_results if img is not None and err is None]
-        errors = [err for _, err in run_results if err]
-        st.session_state.custom_augmented = successful[-1] if successful else None
-        st.session_state.custom_error = "\n".join(errors) if errors else None
+    if st.button("Clear output", key="clear_custom_output"):
+        st.session_state.custom_run_results = []
+        st.session_state.custom_augmented = None
+        st.session_state.custom_error = None
+        st.session_state.selected_custom_output = "Pipeline"
         st.rerun()
 
-    st.markdown('<div id="pipeline-summary"></div>', unsafe_allow_html=True)
-    st.subheader("Pipeline Summary")
+with editor_col:
+    editor_shell = _outlined_container()
+    with editor_shell:
+        if st_ace is not None:
+            ace_theme = _get_editor_theme()
+            # Remove theme from key to allow dynamic theme switching
+            ace_key = f"custom_code_ace_{st.session_state.custom_editor_version}"
+            ace_editor = cast(Any, st_ace)
+            edited_code = ace_editor(
+                value=st.session_state.custom_code,
+                language="python",
+                theme=ace_theme,
+                key=ace_key,
+                height=260,
+                auto_update=True,
+            )
+            if edited_code is not None:
+                st.session_state.custom_code = edited_code
+        else:
+            st.text_area(
+                "Editable pipeline code",
+                key="custom_code",
+                height=260,
+                help="Define transform, augmented_image, result['image'], or apply(image).",
+            )
+            st.caption("Tip: install streamlit-ace for syntax-highlighted editing.")
 
+if run_custom:
+    run_results = _run_custom_code(
+        st.session_state.custom_code,
+        image,
+        iterations=int(st.session_state.custom_run_iterations),
+    )
+    st.session_state.custom_run_results = run_results
+    successful_indexes = [
+        idx for idx, (img, err) in enumerate(run_results, start=1) if img is not None and err is None
+    ]
+    st.session_state.selected_custom_output = (
+        f"Run {successful_indexes[0]}" if successful_indexes else "Pipeline"
+    )
+    # Keep legacy state keys populated for compatibility with any pending UI reads.
+    successful = [img for img, err in run_results if img is not None and err is None]
+    errors = [err for _, err in run_results if err]
+    st.session_state.custom_augmented = successful[-1] if successful else None
+    st.session_state.custom_error = "\n".join(errors) if errors else None
+    st.rerun()
+
+st.markdown('<div id="pipeline-summary"></div>', unsafe_allow_html=True)
+st.subheader("Pipeline Summary")
+
+if selected:
     overview_rows: List[dict[str, Any]] = []
     param_rows: List[dict[str, str]] = []
     for name, config in selected.items():
@@ -511,11 +546,11 @@ if selected:
     st.caption("All parameters")
     st.dataframe(param_rows, hide_index=True, width="stretch")
 else:
-    st.info("👈 Select augmentations from the sidebar to get started!")
+    st.info("Select augmentations from the sidebar to get started!")
 
 # Footer
 st.divider()
 st.caption(
     "Built with [Streamlit](https://streamlit.io) & "
-    "[Albumentations](https://albumentations.ai) • "
+    "[Albumentations](https://albumentations.ai)"
 )
