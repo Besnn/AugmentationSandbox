@@ -476,7 +476,7 @@ with st.sidebar:
         with _outlined_container():
             st.markdown(f"**{step['name']}**")
 
-            up_col, down_col, dup_col, remove_col = st.columns([1, 1, 2, 2])
+            up_col, down_col, dup_col, remove_col = st.columns([1, 1, 1, 1])
             with up_col:
                 if st.button(
                     ":material/arrow_upward:",
