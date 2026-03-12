@@ -231,9 +231,51 @@ def _get_editor_theme() -> str:
         return preferred_theme
 
     # Fallback to standard themes if custom theme injection fails
-    base_theme = str(st.get_option("theme.base") or "").lower().strip()
-    prefer_dark = base_theme == "dark"
-    
+    # Detect dark mode using Streamlit's session state (works everywhere)
+    prefer_dark = False
+
+    # Initialize theme detection in session state
+    if "theme_dark" not in st.session_state:
+        st.session_state.theme_dark = False
+
+    # Use JavaScript to detect the actual theme and store in session state
+    theme_script = """
+    <script>
+        const observer = new MutationObserver(() => {
+            const isDark = window.parent.document.body.classList.contains('stAppViewContainer') &&
+                          window.parent.document.documentElement.getAttribute('data-theme') === 'dark';
+            window.parent.postMessage({type: 'streamlit:setComponentValue', value: isDark}, '*');
+        });
+        observer.observe(window.parent.document.documentElement, {attributes: true, attributeFilter: ['data-theme']});
+
+        // Initial check
+        const isDark = window.parent.document.documentElement.getAttribute('data-theme') === 'dark';
+        window.parent.postMessage({type: 'streamlit:setComponentValue', value: isDark}, '*');
+    </script>
+    """
+
+    # Try to detect from background color as a simpler approach
+    try:
+        # Check if we can get theme from Streamlit's internal state
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        ctx = get_script_run_ctx()
+        if ctx and hasattr(ctx, 'session_state'):
+            prefer_dark = st.session_state.get("theme_dark", False)
+    except Exception:
+        pass
+
+    # Fallback: check background color option
+    if not prefer_dark:
+        bg_color = st.get_option("theme.backgroundColor")
+        if bg_color:
+            # Dark themes typically have dark background colors
+            # Convert hex to brightness
+            bg_color = bg_color.lstrip('#')
+            if len(bg_color) == 6:
+                r, g, b = int(bg_color[0:2], 16), int(bg_color[2:4], 16), int(bg_color[4:6], 16)
+                brightness = (r * 299 + g * 587 + b * 114) / 1000
+                prefer_dark = brightness < 128
+
     # These are standard Ace themes guaranteed to be in streamlit-ace
     return "monokai" if prefer_dark else "chrome"
 
