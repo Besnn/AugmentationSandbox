@@ -527,19 +527,30 @@ def _build_kwargs(name: str, param_values: dict) -> dict:
     return kwargs
 
 
-def build_pipeline(selected: dict) -> A.Compose:
+def build_pipeline(selected) -> A.Compose:
     """
     Build an Albumentations Compose pipeline from the selected augmentations.
 
-    selected: {aug_name: {"params": {param_name: value}, "p": float}}
+    selected supports either:
+      - list of step dicts with keys: name, params, p
+      - legacy mapping: {aug_name: {"params": {...}, "p": float}}
     """
     transforms = []
-    for name, config in selected.items():
-        entry = AUGMENTATION_REGISTRY[name]
-        cls = entry["class"]
-        kwargs = _build_kwargs(name, config.get("params", {}))
-        kwargs["p"] = config.get("p", 1.0)
-        transforms.append(cls(**kwargs))
+    if isinstance(selected, list):
+        for step in selected:
+            name = step["name"]
+            entry = AUGMENTATION_REGISTRY[name]
+            cls = entry["class"]
+            kwargs = _build_kwargs(name, step.get("params", {}))
+            kwargs["p"] = step.get("p", 1.0)
+            transforms.append(cls(**kwargs))
+    else:
+        for name, config in selected.items():
+            entry = AUGMENTATION_REGISTRY[name]
+            cls = entry["class"]
+            kwargs = _build_kwargs(name, config.get("params", {}))
+            kwargs["p"] = config.get("p", 1.0)
+            transforms.append(cls(**kwargs))
 
     return A.Compose(transforms)
 

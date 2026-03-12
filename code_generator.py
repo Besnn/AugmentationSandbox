@@ -5,11 +5,13 @@ Generates a copy-pasteable Python code snippet from the current augmentation con
 from augmentations import AUGMENTATION_REGISTRY, _build_kwargs
 
 
-def generate_code(selected: dict) -> str:
+def generate_code(selected) -> str:
     """
     Generate Python code for the current augmentation pipeline.
 
-    selected: {aug_name: {"params": {param_name: value}, "p": float}}
+    selected supports either:
+      - list of step dicts with keys: name, params, p
+      - legacy mapping: {aug_name: {"params": {...}, "p": float}}
     """
     lines = [
         "import albumentations as A",
@@ -17,7 +19,15 @@ def generate_code(selected: dict) -> str:
         "transform = A.Compose([",
     ]
 
-    for name, config in selected.items():
+    if isinstance(selected, list):
+        iterable = [
+            (step["name"], {"params": step.get("params", {}), "p": step.get("p", 1.0)})
+            for step in selected
+        ]
+    else:
+        iterable = list(selected.items())
+
+    for name, config in iterable:
         entry = AUGMENTATION_REGISTRY[name]
         kwargs = _build_kwargs(name, config.get("params", {}))
         kwargs["p"] = config.get("p", 1.0)

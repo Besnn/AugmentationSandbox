@@ -8,7 +8,6 @@ import albumentations as A
 import numpy as np
 import streamlit as st
 from PIL import Image
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, cast
 
@@ -56,6 +55,19 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown(
+    """
+    <style>
+    div[data-testid="stButton"] > button {
+        font-size: 1rem;
+        min-height: 2.4rem;
+        padding: 0.45rem 0.9rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # ──────────────────────────── Session state ──────────────────────────
 if "run_counter" not in st.session_state:
     st.session_state.run_counter = 0
@@ -86,6 +98,12 @@ if "selected_custom_output" not in st.session_state:
 
 if "editor_theme_preference" not in st.session_state:
     st.session_state.editor_theme_preference = "dark"
+
+if "pipeline_steps" not in st.session_state:
+    st.session_state.pipeline_steps = []
+
+if "next_pipeline_step_id" not in st.session_state:
+    st.session_state.next_pipeline_step_id = 1
 
 
 def _bump_counter():
@@ -191,6 +209,76 @@ def _format_summary_value(value: Any) -> str:
     return str(value)
 
 
+def _default_params_for_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    return {param_def[0]: param_def[2] for param_def in entry["params"]}
+
+
+def _render_step_params(step: dict[str, Any]) -> None:
+    step_id = step["id"]
+    aug_name = step["name"]
+    entry = AUGMENTATION_REGISTRY[aug_name]
+
+    step["p"] = st.slider(
+        "Probability",
+        min_value=0.0,
+        max_value=1.0,
+        value=float(step.get("p", 1.0)),
+        step=0.05,
+        key=f"step_{step_id}_p",
+    )
+
+    params: dict[str, Any] = {}
+    current_params = step.get("params", {})
+    for param_def in entry["params"]:
+        pname, ptype, pdefault, *prest = param_def
+        current_value = current_params.get(pname, pdefault)
+        if ptype == "int":
+            pmin, pmax, pstep = prest
+            val = st.slider(
+                pname,
+                min_value=int(pmin),
+                max_value=int(pmax),
+                value=int(current_value),
+                step=int(pstep),
+                key=f"step_{step_id}_{pname}",
+            )
+        elif ptype == "float":
+            pmin, pmax, pstep = prest
+            val = st.slider(
+                pname,
+                min_value=float(pmin),
+                max_value=float(pmax),
+                value=float(current_value),
+                step=float(pstep),
+                key=f"step_{step_id}_{pname}",
+            )
+        elif ptype == "bool":
+            val = st.checkbox(
+                pname,
+                value=bool(current_value),
+                key=f"step_{step_id}_{pname}",
+            )
+        elif ptype == "select":
+            options = prest[0]
+            val = st.selectbox(
+                pname,
+                options=options,
+                index=options.index(current_value) if current_value in options else 0,
+                key=f"step_{step_id}_{pname}",
+            )
+        elif ptype in {"text", "literal"}:
+            val = st.text_input(
+                pname,
+                value=str(current_value),
+                key=f"step_{step_id}_{pname}",
+            )
+        else:
+            val = current_value
+        params[pname] = val
+
+    step["params"] = params
+
+
 # ──────────────────────────── Helper: generate a sample image ────────
 def _make_sample_image() -> np.ndarray:
     """Generate a colourful sample image so the app works without uploading."""
@@ -247,75 +335,29 @@ for name, entry in AUGMENTATION_REGISTRY.items():
     cat = entry["category"]
     categories.setdefault(cat, []).append(name)
 
-# Collect selected augmentations and their params
-selected: OrderedDict = OrderedDict()
-
 for cat, aug_names in categories.items():
     with st.sidebar.expander(f"**{cat}**", expanded=False):
         for aug_name in aug_names:
-            entry = AUGMENTATION_REGISTRY[aug_name]
-            enabled = st.checkbox(aug_name, key=f"enable_{aug_name}")
-            if enabled:
-                params = {}
-                # Probability slider
-                p = st.slider(
-                    f"{aug_name} — probability",
-                    min_value=0.0,
-                    max_value=1.0,
-                    value=1.0,
-                    step=0.05,
-                    key=f"p_{aug_name}",
-                )
-                # Parameter sliders
-                for param_def in entry["params"]:
-                    pname, ptype, pdefault, *prest = param_def
-                    label = f"{aug_name} — {pname}"
-                    if ptype == "int":
-                        pmin, pmax, pstep = prest
-                        val = st.slider(
-                            label,
-                            min_value=pmin,
-                            max_value=pmax,
-                            value=pdefault,
-                            step=pstep,
-                            key=f"param_{aug_name}_{pname}",
-                        )
-                    elif ptype == "float":
-                        pmin, pmax, pstep = prest
-                        val = st.slider(
-                            label,
-                            min_value=pmin,
-                            max_value=pmax,
-                            value=pdefault,
-                            step=pstep,
-                            key=f"param_{aug_name}_{pname}",
-                        )
-                    elif ptype == "bool":
-                        val = st.checkbox(
-                            label,
-                            value=pdefault,
-                            key=f"param_{aug_name}_{pname}",
-                        )
-                    elif ptype == "select":
-                        options = prest[0]
-                        val = st.selectbox(
-                            label,
-                            options=options,
-                            index=options.index(pdefault) if pdefault in options else 0,
-                            key=f"param_{aug_name}_{pname}",
-                        )
-                    elif ptype in {"text", "literal"}:
-                        val = st.text_input(
-                            label,
-                            value=str(pdefault),
-                            key=f"param_{aug_name}_{pname}",
-                        )
-                    else:
-                        val = pdefault
-                    params[pname] = val
+            count = sum(1 for step in st.session_state.pipeline_steps if step["name"] == aug_name)
+            row_col1, row_col2 = st.columns([5, 2])
+            with row_col1:
+                label = f"{aug_name} ({count})" if count else aug_name
+                st.caption(label)
+            with row_col2:
+                if st.button("Add", key=f"add_{aug_name}", width="stretch"):
+                    entry = AUGMENTATION_REGISTRY[aug_name]
+                    st.session_state.pipeline_steps.append(
+                        {
+                            "id": st.session_state.next_pipeline_step_id,
+                            "name": aug_name,
+                            "p": 1.0,
+                            "params": _default_params_for_entry(entry),
+                        }
+                    )
+                    st.session_state.next_pipeline_step_id += 1
+                    st.rerun()
 
-                selected[aug_name] = {"params": params, "p": p}
-                st.markdown("---")
+selected_steps = st.session_state.pipeline_steps
 
 # ──────────────────────────── Main area ──────────────────────────────
 st.markdown('<div id="top"></div>', unsafe_allow_html=True)
@@ -329,9 +371,9 @@ with col_btn2:
     st.markdown(f"*Run #{st.session_state.run_counter}*")
 
 # Apply pipeline
-if selected:
+if selected_steps:
     try:
-        pipeline = build_pipeline(selected)
+        pipeline = build_pipeline(selected_steps)
         augmented = pipeline(image=image)["image"]
         error_msg = None
     except Exception as e:
@@ -356,30 +398,73 @@ if selected_label != "Pipeline" and st.session_state.custom_run_results:
 
 # Display images side by side
 st.markdown('<div id="image-comparison"></div>', unsafe_allow_html=True)
-col_orig, col_aug = st.columns(2)
+steps_col, preview_col = st.columns([1, 2])
 
-with col_orig:
-    st.subheader("Original")
-    st.image(image, width="stretch")
-    h, w = image.shape[:2]
-    st.caption(f"Size: {w} × {h}")
+with steps_col:
+    st.subheader("Pipeline Steps")
+    if not selected_steps:
+        st.caption("Use Add in the sidebar to insert one or more augmentation steps.")
+    for idx, step in enumerate(selected_steps, start=1):
+        with _outlined_container():
+            header_col, spacer_col, dup_col, remove_col = st.columns([4, 1.5, 1.25, 1.25])
+            with header_col:
+                st.markdown(f"**{idx}. {step['name']}**")
+            with spacer_col:
+                st.write("")
+            with dup_col:
+                if st.button(
+                    ":material/content_copy:",
+                    key=f"dup_step_{step['id']}",
+                    width="stretch",
+                    help="Duplicate step",
+                ):
+                    st.session_state.pipeline_steps.insert(
+                        idx,
+                        {
+                            "id": st.session_state.next_pipeline_step_id,
+                            "name": step["name"],
+                            "p": step.get("p", 1.0),
+                            "params": dict(step.get("params", {})),
+                        },
+                    )
+                    st.session_state.next_pipeline_step_id += 1
+                    st.rerun()
+            with remove_col:
+                if st.button(
+                    ":material/delete:",
+                    key=f"remove_step_{step['id']}",
+                    width="stretch",
+                    help="Remove step",
+                ):
+                    st.session_state.pipeline_steps.pop(idx - 1)
+                    st.rerun()
+            _render_step_params(step)
 
-with col_aug:
-    st.subheader("Augmented")
-    if error_msg:
-        st.error(f"Error applying augmentation: {error_msg}")
+with preview_col:
+    col_orig, col_aug = st.columns(2)
+
+    with col_orig:
+        st.subheader("Original")
         st.image(image, width="stretch")
-    elif selected_custom_err:
-        st.error(f"Selected custom output error: {selected_custom_err}")
-        st.image(augmented, width="stretch")
-    elif selected_custom_img is not None:
-        st.image(selected_custom_img, width="stretch")
-        h2, w2 = selected_custom_img.shape[:2]
-        st.caption(f"Size: {w2} × {h2}")
-    else:
-        st.image(augmented, width="stretch")
-        h2, w2 = augmented.shape[:2]
-        st.caption(f"Size: {w2} × {h2}")
+        h, w = image.shape[:2]
+        st.caption(f"Size: {w} × {h}")
+
+    with col_aug:
+        st.subheader("Augmented")
+        if error_msg:
+            st.error(f"Error applying augmentation: {error_msg}")
+            st.image(image, width="stretch")
+        elif selected_custom_err:
+            st.error(f"Selected custom output error: {selected_custom_err}")
+            st.image(augmented, width="stretch")
+        elif selected_custom_img is not None:
+            st.image(selected_custom_img, width="stretch")
+            h2, w2 = selected_custom_img.shape[:2]
+            st.caption(f"Size: {w2} × {h2}")
+        else:
+            st.image(augmented, width="stretch")
+            h2, w2 = augmented.shape[:2]
+            st.caption(f"Size: {w2} × {h2}")
 
 st.markdown('<div id="custom-outputs"></div>', unsafe_allow_html=True)
 if st.session_state.custom_run_results:
@@ -411,7 +496,7 @@ st.markdown('<div id="pipeline-code"></div>', unsafe_allow_html=True)
 st.divider()
 
 st.subheader("Pipeline Code")
-generated_code = generate_code(selected)
+generated_code = generate_code(selected_steps)
 if (
     not st.session_state.custom_code
     or generated_code != st.session_state.last_generated_code
@@ -499,15 +584,17 @@ if run_custom:
 st.markdown('<div id="pipeline-summary"></div>', unsafe_allow_html=True)
 st.subheader("Pipeline Summary")
 
-if selected:
+if selected_steps:
     overview_rows: List[dict[str, Any]] = []
     param_rows: List[dict[str, str]] = []
-    for name, config in selected.items():
-        params = config["params"]
+    for idx, step in enumerate(selected_steps, start=1):
+        name = step["name"]
+        params = step.get("params", {})
         overview_rows.append(
             {
+                "Step": idx,
                 "Augmentation": name,
-                "Probability (p)": f"{config['p']:.2f}",
+                "Probability (p)": f"{step.get('p', 1.0):.2f}",
                 "Parameter count": len(params),
             }
         )
@@ -515,6 +602,7 @@ if selected:
             for pname, pvalue in params.items():
                 param_rows.append(
                     {
+                        "Step": idx,
                         "Augmentation": name,
                         "Parameter": pname,
                         "Value": _format_summary_value(pvalue),
@@ -523,6 +611,7 @@ if selected:
         else:
             param_rows.append(
                 {
+                    "Step": idx,
                     "Augmentation": name,
                     "Parameter": "(none)",
                     "Value": "-",
