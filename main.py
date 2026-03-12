@@ -440,7 +440,7 @@ for cat, aug_names in categories.items():
                 label = f"{aug_name} ({count})" if count else aug_name
                 st.caption(label)
             with row_col2:
-                if st.button("Add", key=f"add_{aug_name}", width="stretch"):
+                if st.button("+", key=f"add_{aug_name}", width="stretch"):
                     entry = AUGMENTATION_REGISTRY[aug_name]
                     new_id = st.session_state.next_pipeline_step_id
                     st.session_state.pipeline_steps.append(
