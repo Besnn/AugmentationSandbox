@@ -105,6 +105,9 @@ if "pipeline_steps" not in st.session_state:
 if "next_pipeline_step_id" not in st.session_state:
     st.session_state.next_pipeline_step_id = 1
 
+if "pipeline_step_order" not in st.session_state:
+    st.session_state.pipeline_step_order = []
+
 
 def _bump_counter():
     st.session_state.run_counter += 1
@@ -279,6 +282,14 @@ def _render_step_params(step: dict[str, Any]) -> None:
     step["params"] = params
 
 
+def _sync_pipeline_step_order() -> None:
+    """Keep ordered step id list in sync with current step records."""
+    known_ids = [step["id"] for step in st.session_state.pipeline_steps]
+    current_order = [sid for sid in st.session_state.pipeline_step_order if sid in known_ids]
+    missing_ids = [sid for sid in known_ids if sid not in current_order]
+    st.session_state.pipeline_step_order = current_order + missing_ids
+
+
 # ──────────────────────────── Helper: generate a sample image ────────
 def _make_sample_image() -> np.ndarray:
     """Generate a colourful sample image so the app works without uploading."""
@@ -346,57 +357,102 @@ for cat, aug_names in categories.items():
             with row_col2:
                 if st.button("Add", key=f"add_{aug_name}", width="stretch"):
                     entry = AUGMENTATION_REGISTRY[aug_name]
+                    new_id = st.session_state.next_pipeline_step_id
                     st.session_state.pipeline_steps.append(
                         {
-                            "id": st.session_state.next_pipeline_step_id,
+                            "id": new_id,
                             "name": aug_name,
                             "p": 1.0,
                             "params": _default_params_for_entry(entry),
                         }
                     )
+                    st.session_state.pipeline_step_order.append(new_id)
                     st.session_state.next_pipeline_step_id += 1
                     st.rerun()
 
-selected_steps = st.session_state.pipeline_steps
+_sync_pipeline_step_order()
+step_by_id = {step["id"]: step for step in st.session_state.pipeline_steps}
+selected_steps = [
+    step_by_id[step_id]
+    for step_id in st.session_state.pipeline_step_order
+    if step_id in step_by_id
+]
 
 st.sidebar.divider()
 st.sidebar.subheader("Pipeline Steps")
 with st.sidebar:
     if not selected_steps:
         st.caption("Use Add in the sections above to insert one or more augmentation steps.")
+
+    if selected_steps:
+        st.caption("Reorder steps with the arrow buttons on each parameter box.")
+
     for idx, step in enumerate(selected_steps, start=1):
         with _outlined_container():
-            header_col, spacer_col, dup_col, remove_col = st.columns([4, 0.5, 2.2, 2.2])
-            with header_col:
-                st.markdown(f"**{idx}. {step['name']}**")
-            with spacer_col:
-                st.write("")
+            st.markdown(f"**{step['name']}**")
+
+            up_col, down_col, dup_col, remove_col = st.columns([1, 1, 2, 2])
+            with up_col:
+                if st.button(
+                    ":material/arrow_upward:",
+                    key=f"move_up_{step['id']}",
+                    width="stretch",
+                    help="Move step up",
+                    disabled=idx == 1,
+                ):
+                    order = list(st.session_state.pipeline_step_order)
+                    pos = order.index(step["id"])
+                    order[pos - 1], order[pos] = order[pos], order[pos - 1]
+                    st.session_state.pipeline_step_order = order
+                    st.rerun()
+            with down_col:
+                if st.button(
+                    ":material/arrow_downward:",
+                    key=f"move_down_{step['id']}",
+                    width="stretch",
+                    help="Move step down",
+                    disabled=idx == len(selected_steps),
+                ):
+                    order = list(st.session_state.pipeline_step_order)
+                    pos = order.index(step["id"])
+                    order[pos], order[pos + 1] = order[pos + 1], order[pos]
+                    st.session_state.pipeline_step_order = order
+                    st.rerun()
             with dup_col:
                 if st.button(
-                    "⧉",
+                    ":material/content_copy:",
                     key=f"dup_step_{step['id']}",
                     width="stretch",
                     help="Duplicate step",
                 ):
+                    new_id = st.session_state.next_pipeline_step_id
                     st.session_state.pipeline_steps.insert(
                         idx,
                         {
-                            "id": st.session_state.next_pipeline_step_id,
+                            "id": new_id,
                             "name": step["name"],
                             "p": step.get("p", 1.0),
                             "params": dict(step.get("params", {})),
                         },
                     )
+                    current_pos = st.session_state.pipeline_step_order.index(step["id"])
+                    st.session_state.pipeline_step_order.insert(current_pos + 1, new_id)
                     st.session_state.next_pipeline_step_id += 1
                     st.rerun()
             with remove_col:
                 if st.button(
-                    "🗑",
+                    ":material/delete:",
                     key=f"remove_step_{step['id']}",
                     width="stretch",
                     help="Remove step",
                 ):
-                    st.session_state.pipeline_steps.pop(idx - 1)
+                    remove_id = step["id"]
+                    st.session_state.pipeline_steps = [
+                        s for s in st.session_state.pipeline_steps if s["id"] != remove_id
+                    ]
+                    st.session_state.pipeline_step_order = [
+                        sid for sid in st.session_state.pipeline_step_order if sid != remove_id
+                    ]
                     st.rerun()
             _render_step_params(step)
 
@@ -509,22 +565,20 @@ with actions_col:
     st.selectbox(
         "Editor theme",
         options=["dark", "light"],
+        format_func=lambda x: x.title(),
         key="editor_theme_preference",
         help="Choose editor color theme.",
     )
 
-    run_button_col, run_count_col = st.columns([2, 1])
-    with run_button_col:
-        run_custom = st.button("Run code", key="run_custom_code", width="stretch")
-    with run_count_col:
-        st.number_input(
-            "Runs",
-            min_value=1,
-            max_value=100,
-            step=1,
-            key="custom_run_iterations",
-            help="Number of independent runs from the same base image.",
-        )
+    run_custom = st.button("Run code", key="run_custom_code", width="stretch")
+    st.number_input(
+        "Runs",
+        min_value=1,
+        max_value=100,
+        step=1,
+        key="custom_run_iterations",
+        help="Number of independent runs from the same base image.",
+    )
     if st.button("Clear output", key="clear_custom_output"):
         st.session_state.custom_run_results = []
         st.session_state.custom_augmented = None
