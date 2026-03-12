@@ -60,26 +60,43 @@ ace.define("ace/theme/github_light", ["require", "exports", "module", "ace/lib/d
     return bundled_themes[theme_name]
 
 
-def _ensure_custom_ace_theme(theme_name: str) -> None:
-    """Create a custom Ace theme file in streamlit-ace package assets when missing."""
-    if st_ace is None:
-        return
+def _ace_theme_path(theme_name: str) -> Path | None:
+    """Return the component path for a given Ace theme file."""
     try:
         import streamlit_ace
 
-        theme_path = (
+        return (
             Path(streamlit_ace.__file__).resolve().parent
             / "frontend"
             / "build"
             / f"theme-{theme_name}.js"
         )
+    except Exception:
+        return None
+
+
+def _ensure_custom_ace_theme(theme_name: str) -> bool:
+    """Ensure a custom Ace theme exists and is registered; return True when usable."""
+    if st_ace is None:
+        return False
+
+    theme_path = _ace_theme_path(theme_name)
+    if theme_path is None:
+        return False
+
+    try:
         if not theme_path.exists():
             theme_path.write_text(_load_bundled_ace_theme(theme_name), encoding="utf-8")
-        if theme_name not in ACE_THEMES:
-            ACE_THEMES.append(theme_name)
     except Exception:
         # Keep the app usable even if site-packages is read-only.
-        pass
+        return False
+
+    if not theme_path.exists():
+        return False
+
+    if theme_name not in ACE_THEMES:
+        ACE_THEMES.append(theme_name)
+    return True
 
 # ──────────────────────────── Page config ────────────────────────────
 st.set_page_config(
@@ -208,16 +225,23 @@ def _run_custom_code(
 
 
 def _get_editor_theme() -> str:
-    """Use a custom Ace theme based on Streamlit CSS variables."""
+    """Use Streamlit-aware custom theme when possible; otherwise use built-ins."""
     preferred_theme = "streamlit_auto"
-    _ensure_custom_ace_theme(preferred_theme)
-    if preferred_theme in ACE_THEMES:
+    if _ensure_custom_ace_theme(preferred_theme):
         return preferred_theme
-    for fallback_theme in ["monokai", "github", "tomorrow_night", "textmate"]:
+
+    base_theme = str(st.get_option("theme.base") or "").lower().strip()
+    prefer_dark = base_theme != "light"
+    fallback_order = ["monokai", "tomorrow_night", "github", "textmate"]
+    if not prefer_dark:
+        fallback_order = ["github", "textmate", "monokai", "tomorrow_night"]
+
+    for fallback_theme in fallback_order:
         if fallback_theme in ACE_THEMES:
             return fallback_theme
-    # Final fallback avoids requesting non-existent custom assets.
-    return "monokai"
+
+    # Final hardcoded fallback avoids requesting non-existent custom assets.
+    return "github" if not prefer_dark else "monokai"
 
 
 def _outlined_container():
