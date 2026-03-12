@@ -22,9 +22,42 @@ except ImportError:
 
 
 def _load_bundled_ace_theme(theme_name: str) -> str:
-    """Load bundled Ace theme JS file (for example github_dark or github_light)."""
-    theme_asset = Path(__file__).with_name(f"theme-{theme_name}.js")
-    return theme_asset.read_text(encoding="utf-8")
+    """Return bundled Ace theme JS content from in-file constants."""
+    bundled_themes = {
+        "streamlit_auto": """
+ace.define("ace/theme/streamlit_auto", ["require", "exports", "module", "ace/lib/dom"], function(require, exports, module) {
+    exports.isDark = false;
+    exports.cssClass = "ace-streamlit-auto";
+    exports.cssText = ".ace-streamlit-auto .ace_gutter{background:var(--secondary-background-color,#f0f2f6);color:var(--text-color,#262730)}.ace-streamlit-auto .ace_print-margin{width:1px;background:var(--secondary-background-color,#e6e9ef)}.ace-streamlit-auto{background-color:var(--background-color,#ffffff);color:var(--text-color,#262730)}.ace-streamlit-auto .ace_cursor{color:var(--text-color,#262730)}.ace-streamlit-auto .ace_marker-layer .ace_selection{background:color-mix(in srgb, var(--primary-color,#ff4b4b) 28%, transparent)}.ace-streamlit-auto .ace_marker-layer .ace_active-line{background:color-mix(in srgb, var(--secondary-background-color,#f0f2f6) 82%, transparent)}.ace-streamlit-auto .ace_gutter-active-line{background:color-mix(in srgb, var(--secondary-background-color,#f0f2f6) 82%, transparent)}.ace-streamlit-auto .ace_keyword,.ace-streamlit-auto .ace_storage{color:#d73a49}.ace-streamlit-auto .ace_constant.ace_numeric,.ace-streamlit-auto .ace_constant.ace_language{color:#005cc5}.ace-streamlit-auto .ace_string{color:#0a6c3f}.ace-streamlit-auto .ace_comment{color:#6a737d}.ace-streamlit-auto .ace_entity.ace_name.ace_function,.ace-streamlit-auto .ace_support.ace_function{color:#6f42c1}.ace-streamlit-auto .ace_variable.ace_parameter{color:#e36209}";
+
+    var dom = require("../lib/dom");
+    dom.importCssString(exports.cssText, exports.cssClass);
+});
+        """.strip(),
+        "github_dark": """
+ace.define("ace/theme/github_dark", ["require", "exports", "module", "ace/lib/dom"], function(require, exports, module) {
+    exports.isDark = true;
+    exports.cssClass = "ace-github-dark";
+    exports.cssText = ".ace-github-dark .ace_gutter{background:#0d1117;color:#8b949e}.ace-github-dark .ace_print-margin{width:1px;background:#30363d}.ace-github-dark{background-color:#0d1117;color:#c9d1d9}.ace-github-dark .ace_cursor{color:#c9d1d9}.ace-github-dark .ace_marker-layer .ace_selection{background:#264f78}.ace-github-dark .ace_marker-layer .ace_active-line{background:#161b22}.ace-github-dark .ace_gutter-active-line{background-color:#161b22}.ace-github-dark .ace_keyword,.ace-github-dark .ace_storage{color:#ff7b72}.ace-github-dark .ace_constant.ace_numeric,.ace-github-dark .ace_constant.ace_language{color:#79c0ff}.ace-github-dark .ace_string{color:#a5d6ff}.ace-github-dark .ace_comment{color:#8b949e}.ace-github-dark .ace_entity.ace_name.ace_function,.ace-github-dark .ace_support.ace_function{color:#d2a8ff}.ace-github-dark .ace_variable.ace_parameter{color:#ffa657}";
+
+    var dom = require("../lib/dom");
+    dom.importCssString(exports.cssText, exports.cssClass);
+});
+        """.strip(),
+        "github_light": """
+ace.define("ace/theme/github_light", ["require", "exports", "module", "ace/lib/dom"], function(require, exports, module) {
+    exports.isDark = false;
+    exports.cssClass = "ace-github-light";
+    exports.cssText = ".ace-github-light .ace_gutter{background:#f6f8fa;color:#6e7781}.ace-github-light .ace_print-margin{width:1px;background:#d0d7de}.ace-github-light{background-color:#ffffff;color:#24292f}.ace-github-light .ace_cursor{color:#24292f}.ace-github-light .ace_marker-layer .ace_selection{background:#b6e3ff}.ace-github-light .ace_marker-layer .ace_active-line{background:#f6f8fa}.ace-github-light .ace_gutter-active-line{background-color:#f6f8fa}.ace-github-light .ace_keyword,.ace-github-light .ace_storage{color:#cf222e}.ace-github-light .ace_constant.ace_numeric,.ace-github-light .ace_constant.ace_language{color:#0550ae}.ace-github-light .ace_string{color:#0a3069}.ace-github-light .ace_comment{color:#6e7781}.ace-github-light .ace_entity.ace_name.ace_function,.ace-github-light .ace_support.ace_function{color:#8250df}.ace-github-light .ace_variable.ace_parameter{color:#953800}";
+
+    var dom = require("../lib/dom");
+    dom.importCssString(exports.cssText, exports.cssClass);
+});
+        """.strip(),
+    }
+    if theme_name not in bundled_themes:
+        raise KeyError(f"Unsupported bundled Ace theme: {theme_name}")
+    return bundled_themes[theme_name]
 
 
 def _ensure_custom_ace_theme(theme_name: str) -> None:
