@@ -64,7 +64,7 @@ dependencies = [
     { name = "pillow" },
     { name = "streamlit" },
     { name = "streamlit-ace" },
-    { name = "streamlit-sortables" },
+    { name = "streamlit-theme" },
 ]
 
 [package.metadata]
@@ -75,7 +75,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=10.0" },
     { name = "streamlit", specifier = ">=1.30" },
     { name = "streamlit-ace", specifier = ">=0.1.1" },
-    { name = "streamlit-sortables", specifier = ">=0.3.1" },
+    { name = "streamlit-theme", specifier = ">=0.58.0" },
 ]
 
 [[package]]
@@ -1524,16 +1524,13 @@ wheels = [
 ]
 
 [[package]]
-name = "streamlit-sortables"
-version = "0.3.1"
+name = "streamlit-theme"
+version = "0.58.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "streamlit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/11/10/00c3ae0f183d41bb3608157283a2c92e4f4db87cb21a73e96b3c2c2ca58f/streamlit_sortables-0.3.1.tar.gz", hash = "sha256:9bed78f4407f2b9b1ddead8b6459d1af839aab427b7b5fe4c091e6870630acfe", size = 564139, upload-time = "2025-01-13T07:37:44.533Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/b4/edbef9fa8e49f5df2745a178c44b23553d8472c22fb23f44f6949d544410/streamlit_sortables-0.3.1-py3-none-any.whl", hash = "sha256:1847b2fa2041762b6442e21224bd8c0316c5412e4eb3a38fa748cf7ced834d49", size = 570356, upload-time = "2025-01-13T07:37:42.852Z" },
-]
+sdist = { url = "https://files.pythonhosted.org/packages/55/d8/7e3bd73d525e36faa6eced96f455e503fb03fdeadcef4259c1619fd035ad/streamlit_theme-0.58.0.tar.gz", hash = "sha256:a192f3107592d3ebe946b2d3e15f98084aad03a05aaad25327e190133ef0b16e", size = 9297, upload-time = "2020-04-28T16:58:19.51Z" }
 
 [[package]]
 name = "tenacity"

@@ -20,11 +20,6 @@ except ImportError:
     st_ace = None
     ACE_THEMES = []
 
-try:
-    from streamlit_theme import st_theme as get_streamlit_theme
-except ImportError:
-    get_streamlit_theme = None
-
 
 def _load_bundled_ace_theme(theme_name: str) -> str:
     """Load bundled Ace theme JS file (for example github_dark or github_light)."""
@@ -100,9 +95,6 @@ if "custom_run_iterations" not in st.session_state:
 
 if "selected_custom_output" not in st.session_state:
     st.session_state.selected_custom_output = "Pipeline"
-
-if "active_editor_theme" not in st.session_state:
-    st.session_state.active_editor_theme = ""
 
 if "pipeline_steps" not in st.session_state:
     st.session_state.pipeline_steps = []
@@ -182,49 +174,13 @@ def _run_custom_code(
     return run_results
 
 
-def _resolve_streamlit_theme_base() -> str:
-    """Resolve active Streamlit theme base from runtime/frontend context."""
-    if get_streamlit_theme is not None:
-        try:
-            theme_info = cast(Any, get_streamlit_theme)(key="active_streamlit_theme")
-            if isinstance(theme_info, dict):
-                base = str(theme_info.get("base", "")).lower().strip()
-                if base in {"dark", "light"}:
-                    return base
-        except Exception:
-            pass
-
-    try:
-        context_theme = getattr(getattr(st, "context", None), "theme", None)
-        if isinstance(context_theme, dict):
-            base = str(context_theme.get("base", "")).lower().strip()
-            if base in {"dark", "light"}:
-                return base
-        elif context_theme is not None:
-            base = str(getattr(context_theme, "base", "")).lower().strip()
-            if base in {"dark", "light"}:
-                return base
-    except Exception:
-        pass
-
-    base = str(st.get_option("theme.base") or "").lower().strip()
-    if base in {"dark", "light"}:
-        return base
-    return "dark"
-
-
 def _get_editor_theme() -> str:
-    """Match Ace editor theme to Streamlit topbar theme."""
-    prefer_dark = _resolve_streamlit_theme_base() == "dark"
-
-    preferred_theme = "github_dark" if prefer_dark else "github_light"
-    fallback_theme = "monokai" if prefer_dark else "github"
-
+    """Use a custom Ace theme based on Streamlit CSS variables."""
+    preferred_theme = "streamlit_auto"
     _ensure_custom_ace_theme(preferred_theme)
-
     if preferred_theme in ACE_THEMES:
         return preferred_theme
-    return fallback_theme
+    return "github_dark"
 
 
 def _outlined_container():
@@ -593,9 +549,6 @@ if (
 
 editor_col, actions_col = st.columns([4, 1])
 ace_theme = _get_editor_theme()
-if st.session_state.active_editor_theme != ace_theme:
-    st.session_state.active_editor_theme = ace_theme
-    st.session_state.custom_editor_version += 1
 
 with actions_col:
     st.caption("Editor theme follows Streamlit theme")
