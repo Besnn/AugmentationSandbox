@@ -359,6 +359,47 @@ for cat, aug_names in categories.items():
 
 selected_steps = st.session_state.pipeline_steps
 
+st.sidebar.divider()
+st.sidebar.subheader("Pipeline Steps")
+with st.sidebar:
+    if not selected_steps:
+        st.caption("Use Add in the sections above to insert one or more augmentation steps.")
+    for idx, step in enumerate(selected_steps, start=1):
+        with _outlined_container():
+            header_col, spacer_col, dup_col, remove_col = st.columns([4, 0.5, 2.2, 2.2])
+            with header_col:
+                st.markdown(f"**{idx}. {step['name']}**")
+            with spacer_col:
+                st.write("")
+            with dup_col:
+                if st.button(
+                    "⧉",
+                    key=f"dup_step_{step['id']}",
+                    width="stretch",
+                    help="Duplicate step",
+                ):
+                    st.session_state.pipeline_steps.insert(
+                        idx,
+                        {
+                            "id": st.session_state.next_pipeline_step_id,
+                            "name": step["name"],
+                            "p": step.get("p", 1.0),
+                            "params": dict(step.get("params", {})),
+                        },
+                    )
+                    st.session_state.next_pipeline_step_id += 1
+                    st.rerun()
+            with remove_col:
+                if st.button(
+                    "🗑",
+                    key=f"remove_step_{step['id']}",
+                    width="stretch",
+                    help="Remove step",
+                ):
+                    st.session_state.pipeline_steps.pop(idx - 1)
+                    st.rerun()
+            _render_step_params(step)
+
 # ──────────────────────────── Main area ──────────────────────────────
 st.markdown('<div id="top"></div>', unsafe_allow_html=True)
 st.title("Albumentations Augmentation Sandbox")
@@ -398,73 +439,30 @@ if selected_label != "Pipeline" and st.session_state.custom_run_results:
 
 # Display images side by side
 st.markdown('<div id="image-comparison"></div>', unsafe_allow_html=True)
-steps_col, preview_col = st.columns([1, 2])
+col_orig, col_aug = st.columns(2)
 
-with steps_col:
-    st.subheader("Pipeline Steps")
-    if not selected_steps:
-        st.caption("Use Add in the sidebar to insert one or more augmentation steps.")
-    for idx, step in enumerate(selected_steps, start=1):
-        with _outlined_container():
-            header_col, spacer_col, dup_col, remove_col = st.columns([4, 1.5, 1.25, 1.25])
-            with header_col:
-                st.markdown(f"**{idx}. {step['name']}**")
-            with spacer_col:
-                st.write("")
-            with dup_col:
-                if st.button(
-                    ":material/content_copy:",
-                    key=f"dup_step_{step['id']}",
-                    width="stretch",
-                    help="Duplicate step",
-                ):
-                    st.session_state.pipeline_steps.insert(
-                        idx,
-                        {
-                            "id": st.session_state.next_pipeline_step_id,
-                            "name": step["name"],
-                            "p": step.get("p", 1.0),
-                            "params": dict(step.get("params", {})),
-                        },
-                    )
-                    st.session_state.next_pipeline_step_id += 1
-                    st.rerun()
-            with remove_col:
-                if st.button(
-                    ":material/delete:",
-                    key=f"remove_step_{step['id']}",
-                    width="stretch",
-                    help="Remove step",
-                ):
-                    st.session_state.pipeline_steps.pop(idx - 1)
-                    st.rerun()
-            _render_step_params(step)
+with col_orig:
+    st.subheader("Original")
+    st.image(image, width="stretch")
+    h, w = image.shape[:2]
+    st.caption(f"Size: {w} × {h}")
 
-with preview_col:
-    col_orig, col_aug = st.columns(2)
-
-    with col_orig:
-        st.subheader("Original")
+with col_aug:
+    st.subheader("Augmented")
+    if error_msg:
+        st.error(f"Error applying augmentation: {error_msg}")
         st.image(image, width="stretch")
-        h, w = image.shape[:2]
-        st.caption(f"Size: {w} × {h}")
-
-    with col_aug:
-        st.subheader("Augmented")
-        if error_msg:
-            st.error(f"Error applying augmentation: {error_msg}")
-            st.image(image, width="stretch")
-        elif selected_custom_err:
-            st.error(f"Selected custom output error: {selected_custom_err}")
-            st.image(augmented, width="stretch")
-        elif selected_custom_img is not None:
-            st.image(selected_custom_img, width="stretch")
-            h2, w2 = selected_custom_img.shape[:2]
-            st.caption(f"Size: {w2} × {h2}")
-        else:
-            st.image(augmented, width="stretch")
-            h2, w2 = augmented.shape[:2]
-            st.caption(f"Size: {w2} × {h2}")
+    elif selected_custom_err:
+        st.error(f"Selected custom output error: {selected_custom_err}")
+        st.image(augmented, width="stretch")
+    elif selected_custom_img is not None:
+        st.image(selected_custom_img, width="stretch")
+        h2, w2 = selected_custom_img.shape[:2]
+        st.caption(f"Size: {w2} × {h2}")
+    else:
+        st.image(augmented, width="stretch")
+        h2, w2 = augmented.shape[:2]
+        st.caption(f"Size: {w2} × {h2}")
 
 st.markdown('<div id="custom-outputs"></div>', unsafe_allow_html=True)
 if st.session_state.custom_run_results:
