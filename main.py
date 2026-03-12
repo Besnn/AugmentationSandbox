@@ -230,18 +230,12 @@ def _get_editor_theme() -> str:
     if _ensure_custom_ace_theme(preferred_theme):
         return preferred_theme
 
+    # Fallback to standard themes if custom theme injection fails
     base_theme = str(st.get_option("theme.base") or "").lower().strip()
-    prefer_dark = base_theme != "light"
-    fallback_order = ["monokai", "tomorrow_night", "github", "textmate"]
-    if not prefer_dark:
-        fallback_order = ["github", "textmate", "monokai", "tomorrow_night"]
-
-    for fallback_theme in fallback_order:
-        if fallback_theme in ACE_THEMES:
-            return fallback_theme
-
-    # Final hardcoded fallback avoids requesting non-existent custom assets.
-    return "github" if not prefer_dark else "monokai"
+    prefer_dark = base_theme == "dark"
+    
+    # These are standard Ace themes guaranteed to be in streamlit-ace
+    return "monokai" if prefer_dark else "chrome"
 
 
 def _outlined_container():
