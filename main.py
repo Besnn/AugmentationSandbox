@@ -157,24 +157,12 @@ def _run_custom_code(
 
 
 def _get_editor_theme() -> str:
-    """Use GitHub Dark in dark mode and GitHub Light in light mode."""
-    # Check user's manual preference first
-    preference = st.session_state.get("editor_theme_preference", "dark")
-
-    if preference == "dark":
-        prefer_dark = True
-    elif preference == "light":
-        prefer_dark = False
-    else:  # 'auto'
-        # Default to light theme for 'auto' if detection fails
-        prefer_dark = False
-        try:
-            # st.get_option is the most reliable way for custom themes.
-            if st.get_option("theme.base") == "dark":
-                prefer_dark = True
-        except Exception:
-            # Silently ignore if this fails, stay with default.
-            pass
+    """Use manually selected GitHub Dark/Light editor theme."""
+    preference = str(st.session_state.get("editor_theme_preference", "dark")).lower()
+    # Backward compatibility for old persisted "auto" values.
+    if preference not in {"dark", "light"}:
+        preference = "light"
+    prefer_dark = preference == "dark"
 
     preferred_theme = "github_dark" if prefer_dark else "github_light"
     fallback_theme = "monokai" if prefer_dark else "github"
@@ -437,9 +425,9 @@ with actions_col:
     # Theme selector
     st.selectbox(
         "Editor theme",
-        options=["dark", "auto", "light"],
+        options=["dark", "light"],
         key="editor_theme_preference",
-        help="Choose editor color theme. Auto follows Streamlit theme.",
+        help="Choose editor color theme.",
     )
 
     run_button_col, run_count_col = st.columns([2, 1])
